@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codika WhatsApp Connector</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      max-width: 480px;
+      width: 100%;
+      padding: 24px;
+    }
+
+    .card {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: #22c55e;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .logo h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #fafafa;
+    }
+
+    .subtitle {
+      color: #737373;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    /* Status badge */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 13px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.disconnected { background: #ef4444; }
+    .status-dot.connecting { background: #f59e0b; animation: pulse 1.5s infinite; }
+    .status-dot.connected { background: #22c55e; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .status-text { color: #a3a3a3; }
+    .status-text.connected { color: #22c55e; }
+
+    /* QR Code area */
+    .qr-section {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .qr-container {
+      width: 264px;
+      height: 264px;
+      margin: 0 auto 16px;
+      background: white;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .qr-container img {
+      width: 248px;
+      height: 248px;
+    }
+
+    .qr-placeholder {
+      color: #525252;
+      font-size: 14px;
+    }
+
+    .qr-instructions {
+      font-size: 13px;
+      color: #737373;
+      line-height: 1.5;
+    }
+
+    .qr-instructions strong {
+      color: #d4d4d4;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: #22c55e;
+      color: #0a0a0a;
+    }
+
+    .btn-primary:hover { background: #16a34a; }
+    .btn-primary:disabled { background: #1a3a25; color: #4a4a4a; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #262626;
+      color: #d4d4d4;
+      margin-top: 8px;
+    }
+
+    .btn-secondary:hover { background: #333; }
+
+    /* Connected state */
+    .connected-info {
+      text-align: center;
+      padding: 24px 0;
+    }
+
+    .connected-icon {
+      width: 64px;
+      height: 64px;
+      background: #14532d;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin: 0 auto 16px;
+    }
+
+    .connected-info h2 {
+      font-size: 18px;
+      color: #22c55e;
+      margin-bottom: 8px;
+    }
+
+    .connected-info p {
+      color: #737373;
+      font-size: 14px;
+    }
+
+    .phone-number {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #fafafa;
+      font-size: 16px;
+      margin: 8px 0;
+    }
+
+    /* Error */
+    .error-box {
+      background: #2d1215;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #fca5a5;
+      display: none;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #333;
+      border-top-color: #22c55e;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Info section */
+    .info-section {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #262626;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+
+    .info-label { color: #737373; }
+    .info-value { color: #d4d4d4; font-family: monospace; font-size: 12px; }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="logo">
+        <div class="logo-icon">&#x1f4ac;</div>
+        <h1>WhatsApp Connector</h1>
+      </div>
+      <p class="subtitle">Link your WhatsApp number to activate the bot</p>
+
+      <!-- Status bar -->
+      <div class="status-bar">
+        <div class="status-dot disconnected" id="statusDot"></div>
+        <span class="status-text" id="statusText">Checking connection...</span>
+      </div>
+
+      <!-- Error display -->
+      <div class="error-box" id="errorBox"></div>
+
+      <!-- State: Loading -->
+      <div id="stateLoading" class="qr-section">
+        <div class="qr-container">
+          <div class="spinner"></div>
+        </div>
+        <p class="qr-placeholder">Initializing...</p>
+      </div>
+
+      <!-- State: QR Code -->
+      <div id="stateQR" class="hidden">
+        <div class="qr-section">
+          <div class="qr-container">
+            <img id="qrImage" src="" alt="QR Code">
+          </div>
+          <div class="qr-instructions">
+            <strong>Scan this QR code with WhatsApp:</strong><br>
+            Open WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device
+          </div>
+        </div>
+      </div>
+
+      <!-- State: Connected -->
+      <div id="stateConnected" class="hidden">
+        <div class="connected-info">
+          <div class="connected-icon">&#x2713;</div>
+          <h2>Connected</h2>
+          <p class="phone-number" id="phoneNumber"></p>
+          <p>Your WhatsApp bot is active and receiving messages.</p>
+        </div>
+        <button class="btn btn-secondary" onclick="disconnect()">Disconnect & Re-link</button>
+      </div>
+
+      <!-- State: Needs Instance -->
+      <div id="stateNeedsInstance" class="hidden">
+        <div class="qr-section">
+          <div class="qr-container">
+            <div class="qr-placeholder">No instance created yet</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="createAndConnect()">Create Instance & Get QR Code</button>
+      </div>
+
+      <!-- Info footer -->
+      <div class="info-section">
+        <div class="info-row">
+          <span class="info-label">Instance</span>
+          <span class="info-value" id="infoInstance">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">API</span>
+          <span class="info-value" id="infoApi">-</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration is injected by the setup process
+    const API_BASE = window.location.origin;
+    const API_KEY = window.__CONNECTOR_API_KEY__ || localStorage.getItem('connector_api_key') || '';
+    const INSTANCE_NAME = 'bot';
+
+    let pollInterval = null;
+    let qrPollInterval = null;
+
+    // On load, check for API key in URL hash (setup.sh puts it there)
+    (function init() {
+      const hash = window.location.hash;
+      if (hash.startsWith('#key=')) {
+        const key = hash.substring(5);
+        localStorage.setItem('connector_api_key', key);
+        window.location.hash = '';
+        window.location.reload();
+        return;
+      }
+
+      const storedKey = localStorage.getItem('connector_api_key');
+      if (!storedKey) {
+        showError('API key not found. Open this page using the URL from setup.sh output.');
+        return;
+      }
+
+      document.getElementById('infoApi', API_BASE);
+      checkStatus();
+      pollInterval = setInterval(checkStatus, 5000);
+    })();
+
+    function apiKey() {
+      return localStorage.getItem('connector_api_key') || API_KEY;
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers: {
+          'apikey': apiKey(),
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
+        }
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`API error ${res.status}: ${text}`);
+      }
+      return res.json();
+    }
+
+    function showState(stateId) {
+      ['stateLoading', 'stateQR', 'stateConnected', 'stateNeedsInstance'].forEach(id => {
+        document.getElementById(id).classList.toggle('hidden', id !== stateId);
+      });
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('errorBox').style.display = 'none';
+    }
+
+    function setStatus(state, text) {
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      dot.className = `status-dot ${state}`;
+      txt.className = `status-text ${state}`;
+      txt.textContent = text;
+    }
+
+    async function checkStatus() {
+      try {
+        const data = await api(`/instance/connectionState/${INSTANCE_NAME}`);
+        const state = data?.instance?.state;
+        document.getElementById('infoInstance', INSTANCE_NAME);
+
+        hideError();
+
+        if (state === 'open') {
+          setStatus('connected', 'Connected');
+          showState('stateConnected');
+          stopQRPolling();
+
+          // Try to get phone number
+          try {
+            const info = await api(`/instance/fetchInstances?instanceName=${INSTANCE_NAME}`);
+            if (info?.[0]?.instance?.owner) {
+              const owner = info[0].instance.owner.split('@')[0];
+              document.getElementById('phoneNumber').textContent = `+${owner}`;
+            }
+          } catch (e) { /* ignore */ }
+
+        } else if (state === 'connecting') {
+          setStatus('connecting', 'Waiting for QR scan...');
+          if (!qrPollInterval) fetchQR();
+
+        } else {
+          setStatus('disconnected', 'Disconnected');
+          showState('stateNeedsInstance');
+        }
+
+      } catch (e) {
+        if (e.message.includes('404') || e.message.includes('not found')) {
+          setStatus('disconnected', 'No instance');
+          showState('stateNeedsInstance');
+        } else {
+          setStatus('disconnected', 'API unreachable');
+          showError(`Cannot reach Evolution API at ${API_BASE}. Is the service running?`);
+        }
+      }
+    }
+
+    async function createAndConnect() {
+      try {
+        hideError();
+        showState('stateLoading');
+        setStatus('connecting', 'Creating instance...');
+
+        await api(`/instance/create`, {
+          method: 'POST',
+          body: JSON.stringify({
+            instanceName: INSTANCE_NAME,
+            integration: 'WHATSAPP-BAILEYS'
+          })
+        });
+
+        // Brief delay for instance to initialize
+        await new Promise(r => setTimeout(r, 1500));
+        await fetchQR();
+
+      } catch (e) {
+        if (e.message.includes('already') || e.message.includes('exists')) {
+          // Instance exists, just try to connect
+          await fetchQR();
+        } else {
+          showError(`Failed to create instance: ${e.message}`);
+          showState('stateNeedsInstance');
+        }
+      }
+    }
+
+    async function fetchQR() {
+      try {
+        const data = await api(`/instance/connect/${INSTANCE_NAME}`);
+
+        if (data?.base64) {
+          const src = data.base64.startsWith('data:') ? data.base64 : `data:image/png;base64,${data.base64}`;
+          document.getElementById('qrImage').src = src;
+          showState('stateQR');
+          setStatus('connecting', 'Scan the QR code with WhatsApp');
+
+          // QR codes expire, refresh every 20s
+          stopQRPolling();
+          qrPollInterval = setInterval(async () => {
+            try {
+              const fresh = await api(`/instance/connect/${INSTANCE_NAME}`);
+              if (fresh?.base64) {
+                const freshSrc = fresh.base64.startsWith('data:') ? fresh.base64 : `data:image/png;base64,${fresh.base64}`;
+                document.getElementById('qrImage').src = freshSrc;
+              }
+            } catch (e) {
+              // Connection might have succeeded
+              stopQRPolling();
+              checkStatus();
+            }
+          }, 20000);
+
+        } else if (data?.instance?.state === 'open') {
+          checkStatus();
+        }
+
+      } catch (e) {
+        showError(`Failed to get QR code: ${e.message}`);
+        showState('stateNeedsInstance');
+      }
+    }
+
+    function stopQRPolling() {
+      if (qrPollInterval) {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+      }
+    }
+
+    async function disconnect() {
+      if (!confirm('This will disconnect WhatsApp. You will need to scan a new QR code. Continue?')) return;
+      try {
+        await api(`/instance/logout/${INSTANCE_NAME}`, { method: 'DELETE' });
+        setStatus('disconnected', 'Disconnected');
+        showState('stateNeedsInstance');
+      } catch (e) {
+        showError(`Failed to disconnect: ${e.message}`);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,163 +1,133 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Codika Baileys Connector - Setup Script
+# Codika WhatsApp Connector - One-Command Setup
 # =============================================================================
-# This script configures and starts the WhatsApp connector.
-#
-# Usage:
-#   chmod +x setup.sh
-#   ./setup.sh
-# =============================================================================
-
 set -euo pipefail
 
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'
+BOLD='\033[1m'
+NC='\033[0m'
 
-info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-success() { echo -e "${GREEN}[OK]${NC} $1"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+info()    { echo -e "${BLUE}>>>${NC} $1"; }
+success() { echo -e "${GREEN}>>>${NC} $1"; }
+warn()    { echo -e "${YELLOW}>>>${NC} $1"; }
+fail()    { echo -e "${RED}>>>${NC} $1"; exit 1; }
 
 echo ""
-echo "==========================================="
-echo "  Codika WhatsApp Connector Setup"
-echo "==========================================="
+echo -e "${BOLD}  Codika WhatsApp Connector Setup${NC}"
+echo "  ================================="
 echo ""
 
-# ---- Check Docker ----
+# ---- 1. Check Docker ----
 if ! command -v docker &> /dev/null; then
-    error "Docker is not installed. Please install Docker first:\n  https://docs.docker.com/engine/install/"
+    info "Docker not found. Installing..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker
+    systemctl start docker
+    success "Docker installed"
 fi
 
 if ! docker compose version &> /dev/null 2>&1; then
-    error "Docker Compose V2 is not available. Please update Docker:\n  https://docs.docker.com/compose/install/"
+    fail "Docker Compose V2 not found. Update Docker: https://docs.docker.com/compose/install/"
 fi
 
-success "Docker and Docker Compose detected"
+success "Docker ready"
 
-# ---- Check if already configured ----
+# ---- 2. Check if already configured ----
 if [ -f .env ]; then
-    warn ".env file already exists."
-    read -p "Overwrite with fresh configuration? (y/N): " overwrite
-    if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
-        info "Keeping existing .env. Starting services..."
-        docker compose up -d
-        echo ""
-        success "Services started! API available at: $(grep EVOLUTION_SERVER_URL .env | cut -d= -f2)"
-        exit 0
-    fi
+    warn "Already configured. Starting services..."
+    docker compose up -d
+    API_KEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
+    SERVER_IP=$(grep EVOLUTION_SERVER_URL .env | sed 's|.*//||' | sed 's|:.*||')
+    echo ""
+    success "Services running!"
+    echo ""
+    echo -e "  ${BOLD}Management page:${NC}  http://${SERVER_IP}:3000#key=${API_KEY}"
+    echo ""
+    exit 0
 fi
 
-# ---- Collect configuration ----
+# ---- 3. Collect the ONE thing we need ----
+echo -e "  You need ${BOLD}one thing${NC}: your Codika webhook URL."
+echo "  (You got this from your Codika dashboard or support team)"
 echo ""
-info "Let's configure your connector. You'll need:"
-echo "  1. Your Codika webhook URL (from your dashboard)"
-echo "  2. Your server's public IP or domain"
-echo ""
+read -p "  Webhook URL: " WEBHOOK_URL
 
-# Webhook URL
-read -p "Codika webhook URL: " webhook_url
-if [ -z "$webhook_url" ]; then
-    error "Webhook URL is required."
+if [ -z "$WEBHOOK_URL" ]; then
+    fail "Webhook URL is required. Ask your Codika contact for it."
 fi
 
-# Server URL
-default_port=8080
-read -p "Server public IP or domain (e.g. 123.45.67.89 or connector.example.com): " server_host
-if [ -z "$server_host" ]; then
-    error "Server address is required."
-fi
+# ---- 4. Auto-detect everything else ----
+info "Detecting server IP..."
 
-# Detect if domain or IP
-if [[ "$server_host" == *"."* ]] && ! [[ "$server_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    # It's a domain - assume HTTPS
-    server_url="https://${server_host}"
-    info "Domain detected - using HTTPS. Make sure you have a reverse proxy (nginx/caddy) with SSL configured."
-else
-    # It's an IP - use HTTP with port
-    read -p "Port (default: ${default_port}): " port
-    port=${port:-$default_port}
-    server_url="http://${server_host}:${port}"
-fi
+# Try multiple methods to get public IP
+SERVER_IP=$(curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
+         || curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
+         || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
+         || hostname -I 2>/dev/null | awk '{print $1}' \
+         || echo "localhost")
 
-# Device name
-read -p "Bot name (shown on phone's linked devices, default: Community Bot): " bot_name
-bot_name=${bot_name:-Community Bot}
+success "Server IP: ${SERVER_IP}"
 
-# Generate secrets
-api_key=$(openssl rand -hex 32)
-db_password=$(openssl rand -hex 16)
+# Generate all secrets automatically
+API_KEY=$(openssl rand -hex 32)
+DB_PASSWORD=$(openssl rand -hex 16)
 
-# ---- Write .env ----
+# ---- 5. Write .env (user never touches this) ----
 cat > .env << EOF
-# Generated by setup.sh on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+# Auto-generated by setup.sh on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+# Do NOT edit manually. Re-run ./setup.sh to reconfigure.
 
-# Codika webhook URL
-WEBHOOK_URL=${webhook_url}
+WEBHOOK_URL=${WEBHOOK_URL}
 WEBHOOK_ENABLED=true
-
-# Evolution API
-EVOLUTION_API_KEY=${api_key}
+EVOLUTION_API_KEY=${API_KEY}
 EVOLUTION_API_VERSION=v2.3.7
-EVOLUTION_API_PORT=${port:-$default_port}
-EVOLUTION_SERVER_URL=${server_url}
-
-# PostgreSQL
+EVOLUTION_API_PORT=8080
+EVOLUTION_SERVER_URL=http://${SERVER_IP}:8080
+SETUP_UI_PORT=3000
 POSTGRES_DB=evolution_db
 POSTGRES_USER=evolution
-POSTGRES_PASSWORD=${db_password}
-
-# Session
-SESSION_PHONE_CLIENT=${bot_name}
+POSTGRES_PASSWORD=${DB_PASSWORD}
+SESSION_PHONE_CLIENT=Community Bot
 DEL_INSTANCE=false
 EOF
 
-success ".env file created"
-echo ""
+success "Configuration generated"
 
-# ---- Start services ----
-info "Starting services..."
+# ---- 6. Start everything ----
+info "Starting services (this may take a minute on first run)..."
 docker compose up -d
 
-echo ""
-info "Waiting for Evolution API to be ready..."
+info "Waiting for services to be ready..."
 attempts=0
-max_attempts=30
 until docker exec evolution_api wget --spider -q http://localhost:8080 2>/dev/null; do
     attempts=$((attempts + 1))
-    if [ $attempts -ge $max_attempts ]; then
-        error "Evolution API did not start within 60 seconds. Check logs: docker compose logs evolution-api"
+    if [ $attempts -ge 45 ]; then
+        fail "Services did not start. Run: docker compose logs"
     fi
     sleep 2
 done
 
+# ---- 7. Done! ----
 echo ""
-echo "==========================================="
-success "Setup complete!"
-echo "==========================================="
+echo -e "${GREEN}  ==========================================${NC}"
+echo -e "${GREEN}  Setup complete!${NC}"
+echo -e "${GREEN}  ==========================================${NC}"
 echo ""
-echo "  API URL:     ${server_url}"
-echo "  API Key:     ${api_key}"
+echo -e "  ${BOLD}Open this URL in your browser to connect WhatsApp:${NC}"
 echo ""
-echo "  Next steps:"
-echo "  1. Create a WhatsApp instance:"
+echo -e "  ${BLUE}http://${SERVER_IP}:3000#key=${API_KEY}${NC}"
 echo ""
-echo "     curl -X POST ${server_url}/instance/create \\"
-echo "       -H 'apikey: ${api_key}' \\"
-echo "       -H 'Content-Type: application/json' \\"
-echo "       -d '{\"instanceName\": \"bot\", \"integration\": \"WHATSAPP-BAILEYS\"}'"
+echo "  Then:"
+echo "  1. Click 'Create Instance & Get QR Code'"
+echo "  2. Open WhatsApp on your phone"
+echo "  3. Go to Settings > Linked Devices > Link a Device"
+echo "  4. Scan the QR code shown on the page"
 echo ""
-echo "  2. Get the QR code to link your phone:"
+echo "  That's it! Your bot will start receiving group messages."
 echo ""
-echo "     curl ${server_url}/instance/connect/bot \\"
-echo "       -H 'apikey: ${api_key}'"
-echo ""
-echo "  3. Open WhatsApp on your phone > Settings > Linked Devices > Link a Device"
-echo "     Scan the QR code from step 2"
-echo ""
-echo "  For detailed instructions, see README.md"
+echo -e "  ${YELLOW}Save this URL - you'll need it to manage your connector.${NC}"
 echo ""
