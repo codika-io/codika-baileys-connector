@@ -19,6 +19,15 @@ fail()    { echo -e "${RED}>>>${NC} $1"; exit 1; }
 
 INSTANCE_NAME="bot"
 
+# ---- 0. Parse CLI arguments (for non-interactive install) ----
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --webhook) CODIKA_WEBHOOK_URL="$2"; shift 2 ;;
+        --apikey)  CODIKA_API_KEY="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
 echo ""
 echo -e "${BOLD}  Codika WhatsApp Connector Setup${NC}"
 echo "  ================================="
@@ -122,18 +131,29 @@ if [ -f .env ]; then
 fi
 
 # ---- 3. Collect the TWO things we need ----
-echo -e "  You need ${BOLD}two things${NC} from your Codika dashboard:"
-echo ""
-echo -e "  ${DIM}1. Webhook URL  - the endpoint where messages are forwarded"
-echo -e "  2. API Key     - authenticates requests to Codika${NC}"
-echo ""
+if [ -z "$CODIKA_WEBHOOK_URL" ] || [ -z "$CODIKA_API_KEY" ]; then
+    echo -e "  You need ${BOLD}two things${NC} from your Codika dashboard:"
+    echo ""
+    echo -e "  ${DIM}1. Webhook URL  - the endpoint where messages are forwarded"
+    echo -e "  2. API Key     - authenticates requests to Codika${NC}"
+    echo ""
 
-read -p "  Webhook URL: " CODIKA_WEBHOOK_URL
+    if [ -z "$CODIKA_WEBHOOK_URL" ]; then
+        read -p "  Webhook URL: " CODIKA_WEBHOOK_URL
+    else
+        success "Webhook URL: (provided via --webhook)"
+    fi
+
+    if [ -z "$CODIKA_API_KEY" ]; then
+        read -p "  API Key: " CODIKA_API_KEY
+    else
+        success "API Key: (provided via --apikey)"
+    fi
+fi
+
 if [ -z "$CODIKA_WEBHOOK_URL" ]; then
     fail "Webhook URL is required. Find it in your Codika dashboard."
 fi
-
-read -p "  API Key: " CODIKA_API_KEY
 if [ -z "$CODIKA_API_KEY" ]; then
     fail "API Key is required. Find it in your Codika dashboard."
 fi

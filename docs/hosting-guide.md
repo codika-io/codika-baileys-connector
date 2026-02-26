@@ -1,132 +1,159 @@
-# Hosting Guide
+# Set Up Your WhatsApp Connector (10 minutes)
 
-This connector needs a small always-on server with Docker. Here are the recommended options, cheapest first.
+You need a small server that stays on 24/7 so your WhatsApp bot can receive and send messages. We recommend **Hostinger** -- it's beginner-friendly and costs $5.99/month.
 
-## Requirements
+---
 
-- **RAM:** 512 MB minimum, 1 GB recommended
-- **CPU:** 1 vCPU is sufficient
-- **Storage:** 10 GB minimum
-- **OS:** Ubuntu 22.04 or 24.04 (recommended), Debian 12, or any Linux with Docker support
-- **Network:** Public IP address, port 8080 open (or use a reverse proxy)
+## Step 1: Create a Hostinger account
 
-## Option 1: Hetzner Cloud (Recommended)
+1. Go to **https://www.hostinger.com/vps-hosting**
+2. Choose the cheapest VPS plan (KVM 1 -- $4.99/month, 1 vCPU + 4GB RAM, way more than enough)
+3. Create an account and complete payment
 
-**Cost:** EUR 3.49/month (CX22 - 2 vCPU, 4 GB RAM)
+---
 
-1. Go to [cloud.hetzner.com](https://cloud.hetzner.com)
-2. Create an account and add a payment method
-3. Click **Create Server**
-4. Settings:
-   - Location: Choose closest to your users
-   - Image: **Ubuntu 24.04**
-   - Type: **CX22** (cheapest shared, more than enough)
-   - SSH Key: Add your SSH key (or use password auth)
-5. Click **Create & Buy Now**
-6. Note the IP address
+## Step 2: Create your server
 
-**Connect and install Docker:**
+After purchase, Hostinger walks you through a setup wizard:
+
+**Screen 1 -- Choose a server location**
+- Pick the location closest to you (e.g. **France** if you're in Europe)
+- Click **Next**
+
+**Screen 2 -- Choose what to install**
+- Select **Ubuntu** (the most common Linux, our setup script is built for it)
+- Pick the latest version (24.04 or 22.04)
+- Click **Next**
+
+**Screen 3 -- Choose a plan**
+- Select **KVM 1** ($4.99/mo) -- the cheapest one, 1 vCPU + 4GB RAM is more than enough
+
+**Screen 4 -- Additional features**
+- **Malware scanner**: Leave enabled (free)
+- **Daily auto-backups**: Optional (paid) -- not needed for this
+- **Docker manager**: Enable it -- this pre-installs Docker so you don't have to
+- Click **Next**
+
+**Screen 5 -- Set a root password**
+- Use the **generated password** (click the generate button) and save it in your password manager
+- Click **Complete Setup**
+
+**Wait 1-2 minutes** for the server to be ready. Then in your VPS dashboard, note the **IP address** (e.g. `85.214.123.456`).
+
+---
+
+## Step 3: Connect to your server
+
+Open a terminal (Terminal on Mac, PowerShell on Windows):
+
 ```bash
 ssh root@YOUR_SERVER_IP
+```
 
+Replace `YOUR_SERVER_IP` with the IP from step 2. Enter the root password when prompted.
+
+> First time connecting? Type `yes` when asked about the fingerprint.
+
+---
+
+## Step 4: Install the connector
+
+### Option A: One command (recommended)
+
+Copy this **single command** from your Codika dashboard and paste it in the terminal:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/codika-io/codika-baileys-connector/main/install.sh | bash -s -- \
+  --webhook "YOUR_WEBHOOK_URL" \
+  --apikey "YOUR_API_KEY"
+```
+
+> Your Codika dashboard gives you a ready-to-paste version with your actual webhook URL and API key filled in. Just copy and paste -- no editing needed.
+
+This single command installs Docker, downloads the connector, configures everything, and starts the services. It takes 2-3 minutes.
+
+### Option B: Step by step
+
+If you prefer to run commands one at a time:
+
+```bash
 # Install Docker
 curl -fsSL https://get.docker.com | sh
-
-# Install the connector
-git clone https://github.com/codika-io/codika-baileys-connector.git
-cd codika-baileys-connector
-chmod +x setup.sh
-./setup.sh
-```
-
-## Option 2: Hostinger VPS
-
-**Cost:** ~$5.99/month (KVM 1 - 1 vCPU, 4 GB RAM)
-
-1. Go to [hostinger.com/vps-hosting](https://www.hostinger.com/vps-hosting)
-2. Choose **KVM 1** plan
-3. Select **Ubuntu 22.04** as the OS
-4. Complete purchase
-5. Note the IP address from your dashboard
-
-**Connect and install Docker:**
-```bash
-ssh root@YOUR_SERVER_IP
-
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-
-# Install the connector
-git clone https://github.com/codika-io/codika-baileys-connector.git
-cd codika-baileys-connector
-chmod +x setup.sh
-./setup.sh
-```
-
-## Option 3: DigitalOcean
-
-**Cost:** $6/month (Basic Droplet - 1 vCPU, 1 GB RAM)
-
-1. Go to [digitalocean.com](https://www.digitalocean.com)
-2. Create a Droplet:
-   - Image: **Ubuntu 24.04**
-   - Plan: **Basic $6/mo**
-   - Region: Choose closest to your users
-3. Click **Create Droplet**
-
-**Connect and install Docker:**
-```bash
-ssh root@YOUR_DROPLET_IP
-
-curl -fsSL https://get.docker.com | sh
-
-git clone https://github.com/codika-io/codika-baileys-connector.git
-cd codika-baileys-connector
-chmod +x setup.sh
-./setup.sh
-```
-
-## Optional: Set Up a Domain with SSL
-
-If you have a domain, you can add a reverse proxy with automatic HTTPS using Caddy:
-
-```bash
-# Install Caddy
-apt install -y caddy
-
-# Create Caddy config
-cat > /etc/caddy/Caddyfile << 'EOF'
-connector.yourdomain.com {
-    reverse_proxy localhost:8080
-}
-EOF
-
-# Restart Caddy (auto-obtains SSL certificate)
-systemctl restart caddy
-```
-
-Then update your `.env`:
-```
-EVOLUTION_SERVER_URL=https://connector.yourdomain.com
-```
-
-## Firewall Configuration
-
-If your VPS has a firewall enabled, open the required port:
-
-```bash
-# UFW (Ubuntu default)
-ufw allow 8080/tcp    # Evolution API (or 80/443 if using Caddy)
-ufw allow 22/tcp      # SSH
-ufw enable
-
-# Or on Hetzner, configure the firewall in the Cloud Console
-```
-
-## Keeping it Running
-
-The Docker services are configured with `restart: unless-stopped`, so they automatically restart after crashes or server reboots. To also start Docker on boot:
-
-```bash
 systemctl enable docker
+
+# Download the connector
+git clone https://github.com/codika-io/codika-baileys-connector.git
+cd codika-baileys-connector
+
+# Run the setup (it will ask for your webhook URL and API key)
+./setup.sh
 ```
+
+---
+
+## Step 5: Scan the QR code
+
+When setup finishes, it shows a URL like:
+
+```
+http://YOUR_SERVER_IP:3000#key=abc123...
+```
+
+1. Open that URL in your browser
+2. You'll see a QR code
+3. On your phone: **WhatsApp → Settings → Linked Devices → Link a Device**
+4. Scan the QR code
+
+**Done.** Your WhatsApp connector is live.
+
+**Bookmark the management URL** -- use it anytime to check status or re-link your phone.
+
+---
+
+## Common commands
+
+Connect to your server anytime with `ssh root@YOUR_SERVER_IP`, then:
+
+```bash
+cd codika-baileys-connector
+
+# Check status (all 4 services should say "Up")
+docker compose ps
+
+# View logs
+docker compose logs -f evolution-api
+
+# Restart
+docker compose restart
+
+# Change webhook URL or API key
+rm .env && ./setup.sh
+```
+
+---
+
+## Troubleshooting
+
+**Management page doesn't load?**
+The firewall might be blocking port 3000. On Hostinger, go to your VPS dashboard → Firewall → add a rule to allow TCP port 3000. Or run:
+```bash
+ufw allow 3000/tcp && ufw allow 22/tcp && ufw enable
+```
+
+**QR code expired?**
+Refresh the management page. A new QR code generates automatically.
+
+**Bot stopped responding?**
+Run `docker compose restart` on the server. If the phone was offline for 14+ days, you'll need to re-scan the QR code.
+
+---
+
+## Alternative providers
+
+| Provider | Price | Link |
+|----------|-------|------|
+| **Hostinger VPS** (recommended) | $4.99/mo | https://www.hostinger.com/vps-hosting |
+| Hetzner Cloud | €3.49/mo | https://console.hetzner.cloud |
+| DigitalOcean | $6/mo | https://cloud.digitalocean.com |
+
+The install commands are the same on all providers. Just create an Ubuntu server, SSH in, and paste the one-liner from Step 4.
