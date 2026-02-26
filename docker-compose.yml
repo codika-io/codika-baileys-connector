@@ -27,7 +27,7 @@ services:
   # ---------------------------------------------------------------------------
   evolution-api:
     container_name: evolution_api
-    image: atendai/evolution-api:${EVOLUTION_API_VERSION:-v2.3.7}
+    image: evoapicloud/evolution-api:${EVOLUTION_API_VERSION:-v2.3.7}
     restart: unless-stopped
     depends_on:
       postgres:

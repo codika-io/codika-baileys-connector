@@ -28,9 +28,28 @@ echo ""
 if ! command -v docker &> /dev/null; then
     info "Docker not found. Installing..."
     curl -fsSL https://get.docker.com | sh
-    systemctl enable docker
-    systemctl start docker
+    systemctl enable docker 2>/dev/null || true
+    systemctl start docker 2>/dev/null || true
     success "Docker installed"
+fi
+
+# Check if Docker daemon is running; on macOS, start Docker Desktop if needed
+if ! docker info &> /dev/null; then
+    if [[ "$(uname)" == "Darwin" ]]; then
+        info "Docker daemon not running. Starting Docker Desktop..."
+        open -a Docker
+        attempts=0
+        until docker info &> /dev/null; do
+            attempts=$((attempts + 1))
+            if [ $attempts -ge 30 ]; then
+                fail "Docker Desktop did not start. Please open Docker Desktop manually and re-run this script."
+            fi
+            sleep 2
+        done
+        success "Docker Desktop started"
+    else
+        fail "Docker daemon is not running. Start it with: sudo systemctl start docker"
+    fi
 fi
 
 if ! docker compose version &> /dev/null 2>&1; then
@@ -48,12 +67,56 @@ if [ -f .env ]; then
         exit 0
     fi
     docker compose up -d
-    EVO_API_KEY=$(grep EVOLUTION_API_KEY .env | cut -d= -f2)
-    SERVER_IP=$(grep EVOLUTION_SERVER_URL .env | sed 's|.*//||' | sed 's|:.*||')
+    EVO_API_KEY=$(grep EVOLUTION_API_KEY .env | head -1 | cut -d= -f2)
+    CODIKA_API_KEY=$(grep CODIKA_API_KEY .env | cut -d= -f2)
+    CODIKA_WEBHOOK_URL=$(grep CODIKA_WEBHOOK_URL .env | cut -d= -f2)
+
+    # Wait for Evolution API to be ready
+    info "Waiting for Evolution API..."
+    attempts=0
+    until docker exec evolution_api wget --spider -q http://localhost:8080 2>/dev/null; do
+        attempts=$((attempts + 1))
+        if [ $attempts -ge 30 ]; then
+            fail "Evolution API did not start. Run: docker compose logs evolution-api"
+        fi
+        sleep 2
+    done
+
+    # Ensure the bot instance exists (may have been lost if first run failed)
+    INSTANCE_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+        "http://localhost:8080/instance/connectionState/${INSTANCE_NAME}" \
+        -H "apikey: ${EVO_API_KEY}")
+    if [ "$INSTANCE_CHECK" -eq 404 ]; then
+        info "Instance '${INSTANCE_NAME}' not found, creating..."
+        if [[ "${CODIKA_WEBHOOK_URL}" == *"?"* ]]; then
+            WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}&apiKey=${CODIKA_API_KEY}"
+        else
+            WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}?apiKey=${CODIKA_API_KEY}"
+        fi
+        WEBHOOK_EVENTS='["MESSAGES_UPSERT","MESSAGES_UPDATE","CONNECTION_UPDATE","QRCODE_UPDATED","GROUPS_UPSERT","GROUPS_UPDATE","GROUP_PARTICIPANTS_UPDATE"]'
+        curl -s -o /dev/null \
+            -X POST "http://localhost:8080/instance/create" \
+            -H "apikey: ${EVO_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"instanceName\": \"${INSTANCE_NAME}\",
+                \"integration\": \"WHATSAPP-BAILEYS\",
+                \"qrcode\": true,
+                \"webhook\": {
+                    \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
+                    \"headers\": { \"X-API-Key\": \"${CODIKA_API_KEY}\" },
+                    \"byEvents\": false,
+                    \"base64\": false,
+                    \"events\": ${WEBHOOK_EVENTS}
+                }
+            }"
+        success "Instance created"
+    fi
+
     echo ""
     success "Services running!"
     echo ""
-    echo -e "  ${BOLD}Management page:${NC}  http://${SERVER_IP}:3000#key=${EVO_API_KEY}"
+    echo -e "  ${BOLD}Management page:${NC}  http://localhost:3000#key=${EVO_API_KEY}"
     echo ""
     exit 0
 fi
@@ -199,7 +262,10 @@ echo -e "${GREEN}  ==========================================${NC}"
 echo ""
 echo -e "  ${BOLD}Open this URL in your browser to scan the QR code:${NC}"
 echo ""
-echo -e "  ${BLUE}http://${SERVER_IP}:3000#key=${EVO_API_KEY}${NC}"
+echo -e "  ${BLUE}http://localhost:3000#key=${EVO_API_KEY}${NC}"
+if [ "$SERVER_IP" != "localhost" ]; then
+    echo -e "  ${DIM}(Remote access: http://${SERVER_IP}:3000#key=${EVO_API_KEY})${NC}"
+fi
 echo ""
 echo "  Steps:"
 echo "  1. Open the URL above in your browser"
