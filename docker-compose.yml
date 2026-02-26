@@ -72,39 +72,10 @@ services:
       - CACHE_REDIS_SAVE_INSTANCES=false
       - CACHE_LOCAL_ENABLED=false
 
-      # --- Webhook Forwarding ---
-      - WEBHOOK_GLOBAL_ENABLED=${WEBHOOK_ENABLED:-true}
-      - WEBHOOK_GLOBAL_URL=${WEBHOOK_URL:?Set WEBHOOK_URL in .env}
-      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
-      # Message events (core)
-      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
-      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
-      - WEBHOOK_EVENTS_MESSAGES_EDITED=true
-      - WEBHOOK_EVENTS_MESSAGES_DELETE=true
-      - WEBHOOK_EVENTS_SEND_MESSAGE=false
-      - WEBHOOK_EVENTS_SEND_MESSAGE_UPDATE=false
-      # Connection events
-      - WEBHOOK_EVENTS_QRCODE_UPDATED=true
-      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
-      # Group events
-      - WEBHOOK_EVENTS_GROUPS_UPSERT=true
-      - WEBHOOK_EVENTS_GROUPS_UPDATE=true
-      - WEBHOOK_EVENTS_GROUP_PARTICIPANTS_UPDATE=true
-      # Disable events we don't need
-      - WEBHOOK_EVENTS_CONTACTS_SET=false
-      - WEBHOOK_EVENTS_CONTACTS_UPSERT=false
-      - WEBHOOK_EVENTS_CONTACTS_UPDATE=false
-      - WEBHOOK_EVENTS_CHATS_SET=false
-      - WEBHOOK_EVENTS_CHATS_UPSERT=false
-      - WEBHOOK_EVENTS_CHATS_UPDATE=false
-      - WEBHOOK_EVENTS_CHATS_DELETE=false
-      - WEBHOOK_EVENTS_MESSAGES_SET=false
-      - WEBHOOK_EVENTS_PRESENCE_UPDATE=false
-      - WEBHOOK_EVENTS_LABELS_EDIT=false
-      - WEBHOOK_EVENTS_LABELS_ASSOCIATION=false
-      - WEBHOOK_EVENTS_CALL=false
-      - WEBHOOK_EVENTS_ERRORS=true
-      # Webhook resilience
+      # --- Global Webhook (disabled - we use per-instance webhook with headers) ---
+      - WEBHOOK_GLOBAL_ENABLED=false
+      - WEBHOOK_GLOBAL_URL=
+      # Webhook resilience (applies to per-instance webhooks too)
       - WEBHOOK_REQUEST_TIMEOUT_MS=60000
       - WEBHOOK_RETRY_MAX_ATTEMPTS=10
       - WEBHOOK_RETRY_INITIAL_DELAY_SECONDS=5

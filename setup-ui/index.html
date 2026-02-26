@@ -290,14 +290,14 @@
         <button class="btn btn-secondary" onclick="disconnect()">Disconnect & Re-link</button>
       </div>
 
-      <!-- State: Needs Instance -->
+      <!-- State: Needs Connection -->
       <div id="stateNeedsInstance" class="hidden">
         <div class="qr-section">
           <div class="qr-container">
-            <div class="qr-placeholder">No instance created yet</div>
+            <div class="qr-placeholder">Ready to connect</div>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="createAndConnect()">Create Instance & Get QR Code</button>
+        <button class="btn btn-primary" onclick="createAndConnect()">Connect WhatsApp</button>
       </div>
 
       <!-- Info footer -->
@@ -340,7 +340,7 @@
         return;
       }
 
-      document.getElementById('infoApi', API_BASE);
+      document.getElementById('infoApi').textContent = API_BASE;
       checkStatus();
       pollInterval = setInterval(checkStatus, 5000);
     })();
@@ -393,7 +393,7 @@
       try {
         const data = await api(`/instance/connectionState/${INSTANCE_NAME}`);
         const state = data?.instance?.state;
-        document.getElementById('infoInstance', INSTANCE_NAME);
+        document.getElementById('infoInstance').textContent = INSTANCE_NAME;
 
         hideError();
 
@@ -435,28 +435,38 @@
       try {
         hideError();
         showState('stateLoading');
+        setStatus('connecting', 'Connecting...');
+
+        // Instance is normally created by setup.sh, so try connect first
+        try {
+          await fetchQR();
+          return;
+        } catch (e) {
+          // Instance might not exist yet, create it
+        }
+
         setStatus('connecting', 'Creating instance...');
+        try {
+          await api(`/instance/create`, {
+            method: 'POST',
+            body: JSON.stringify({
+              instanceName: INSTANCE_NAME,
+              integration: 'WHATSAPP-BAILEYS'
+            })
+          });
+        } catch (e) {
+          // Ignore "already exists" errors
+          if (!e.message.includes('already') && !e.message.includes('exists')) {
+            throw e;
+          }
+        }
 
-        await api(`/instance/create`, {
-          method: 'POST',
-          body: JSON.stringify({
-            instanceName: INSTANCE_NAME,
-            integration: 'WHATSAPP-BAILEYS'
-          })
-        });
-
-        // Brief delay for instance to initialize
         await new Promise(r => setTimeout(r, 1500));
         await fetchQR();
 
       } catch (e) {
-        if (e.message.includes('already') || e.message.includes('exists')) {
-          // Instance exists, just try to connect
-          await fetchQR();
-        } else {
-          showError(`Failed to create instance: ${e.message}`);
-          showState('stateNeedsInstance');
-        }
+        showError(`Failed to connect: ${e.message}`);
+        showState('stateNeedsInstance');
       }
     }
 

@@ -10,7 +10,7 @@ WhatsApp groups  <-->  This connector (your server)  <-->  Codika bot (cloud)
 
 ## Setup (5 minutes)
 
-You need: a VPS with Ubuntu (see [hosting guide](docs/hosting-guide.md), ~$5/month) and your Codika webhook URL.
+You need: a VPS with Ubuntu (see [hosting guide](docs/hosting-guide.md), ~$5/month) and your Codika credentials (webhook URL + API key from your dashboard).
 
 **SSH into your server, then:**
 
@@ -22,10 +22,10 @@ cd codika-baileys-connector
 
 The script will:
 - Install Docker if needed
-- Ask for your webhook URL (the only question)
+- Ask for your webhook URL and API key (the only two questions)
 - Auto-detect your server IP
-- Auto-generate all passwords and keys
-- Start everything
+- Auto-generate all internal passwords and keys
+- Start everything and create the WhatsApp instance
 - Give you a URL to scan the QR code
 
 **Open the URL in your browser, scan the QR code with WhatsApp, done.**
