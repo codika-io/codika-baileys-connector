@@ -63,6 +63,7 @@ services:
       - DATABASE_SAVE_DATA_HISTORIC=true
       - DATABASE_SAVE_IS_ON_WHATSAPP=true
       - DATABASE_SAVE_IS_ON_WHATSAPP_DAYS=7
+      - DATABASE_DELETE_MESSAGE=true
 
       # --- Redis Cache ---
       - CACHE_REDIS_ENABLED=true
@@ -72,7 +73,7 @@ services:
       - CACHE_REDIS_SAVE_INSTANCES=false
       - CACHE_LOCAL_ENABLED=false
 
-      # --- Global Webhook (disabled - we use per-instance webhook with headers) ---
+      # --- Global Webhook (disabled - we use per-instance webhook instead) ---
       - WEBHOOK_GLOBAL_ENABLED=false
       - WEBHOOK_GLOBAL_URL=
       # Webhook resilience (applies to per-instance webhooks too)
@@ -81,6 +82,8 @@ services:
       - WEBHOOK_RETRY_INITIAL_DELAY_SECONDS=5
       - WEBHOOK_RETRY_USE_EXPONENTIAL_BACKOFF=true
       - WEBHOOK_RETRY_MAX_DELAY_SECONDS=300
+      - WEBHOOK_RETRY_JITTER_FACTOR=0.2
+      - WEBHOOK_RETRY_NON_RETRYABLE_STATUS_CODES=400,401,403,404,422
 
       # --- Instance Management ---
       - DEL_INSTANCE=${DEL_INSTANCE:-false}

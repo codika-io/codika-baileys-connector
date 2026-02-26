@@ -130,14 +130,21 @@ done
 
 success "Evolution API is running"
 
-# ---- 7. Create instance with per-instance webhook + API key header ----
+# ---- 7. Create instance with per-instance webhook ----
 info "Creating WhatsApp instance with webhook forwarding..."
 
-# Build the webhook events list
-WEBHOOK_EVENTS='["MESSAGES_UPSERT","MESSAGES_UPDATE","MESSAGES_EDITED","MESSAGES_DELETE","QRCODE_UPDATED","CONNECTION_UPDATE","GROUPS_UPSERT","GROUPS_UPDATE","GROUP_PARTICIPANTS_UPDATE"]'
+# Build webhook URL with API key as query parameter (reliable fallback)
+# Also set headers for X-API-Key (works in v2.3.7+ per-instance webhooks)
+# The n8n receiver should check both header and query param
+if [[ "${CODIKA_WEBHOOK_URL}" == *"?"* ]]; then
+    WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}&apiKey=${CODIKA_API_KEY}"
+else
+    WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}?apiKey=${CODIKA_API_KEY}"
+fi
+
+WEBHOOK_EVENTS='["MESSAGES_UPSERT","MESSAGES_UPDATE","CONNECTION_UPDATE","QRCODE_UPDATED","GROUPS_UPSERT","GROUPS_UPDATE","GROUP_PARTICIPANTS_UPDATE"]'
 
 # Create instance with per-instance webhook configuration
-# The per-instance webhook supports custom headers (global webhook does not)
 HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
     -X POST "http://localhost:8080/instance/create" \
     -H "apikey: ${EVO_API_KEY}" \
@@ -145,9 +152,9 @@ HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
     -d "{
         \"instanceName\": \"${INSTANCE_NAME}\",
         \"integration\": \"WHATSAPP-BAILEYS\",
+        \"qrcode\": true,
         \"webhook\": {
-            \"enabled\": true,
-            \"url\": \"${CODIKA_WEBHOOK_URL}\",
+            \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
             \"headers\": {
                 \"X-API-Key\": \"${CODIKA_API_KEY}\"
             },
@@ -160,23 +167,21 @@ HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
 if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
     success "WhatsApp instance created"
 elif [ "$HTTP_STATUS" -eq 403 ] || [ "$HTTP_STATUS" -eq 409 ]; then
-    # Instance might already exist, update its webhook config
-    warn "Instance may already exist, updating webhook configuration..."
+    # Instance already exists -- update its webhook config
+    warn "Instance already exists, updating webhook configuration..."
     curl -s -o /dev/null \
         -X POST "http://localhost:8080/webhook/set/${INSTANCE_NAME}" \
         -H "apikey: ${EVO_API_KEY}" \
         -H "Content-Type: application/json" \
         -d "{
-            \"webhook\": {
-                \"enabled\": true,
-                \"url\": \"${CODIKA_WEBHOOK_URL}\",
-                \"headers\": {
-                    \"X-API-Key\": \"${CODIKA_API_KEY}\"
-                },
-                \"byEvents\": false,
-                \"base64\": false,
-                \"events\": ${WEBHOOK_EVENTS}
-            }
+            \"enabled\": true,
+            \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
+            \"headers\": {
+                \"X-API-Key\": \"${CODIKA_API_KEY}\"
+            },
+            \"webhookByEvents\": false,
+            \"webhookBase64\": false,
+            \"events\": ${WEBHOOK_EVENTS}
         }"
     success "Webhook configuration updated"
 else
