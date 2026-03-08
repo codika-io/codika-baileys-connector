@@ -18,6 +18,8 @@ warn()    { echo -e "${YELLOW}>>>${NC} $1"; }
 fail()    { echo -e "${RED}>>>${NC} $1"; exit 1; }
 
 INSTANCE_NAME="bot"
+CODIKA_WEBHOOK_URL="${CODIKA_WEBHOOK_URL:-}"
+CODIKA_API_KEY="${CODIKA_API_KEY:-}"
 
 # ---- 0. Parse CLI arguments (for non-interactive install) ----
 while [[ $# -gt 0 ]]; do
@@ -97,12 +99,7 @@ if [ -f .env ]; then
         -H "apikey: ${EVO_API_KEY}")
     if [ "$INSTANCE_CHECK" -eq 404 ]; then
         info "Instance '${INSTANCE_NAME}' not found, creating..."
-        if [[ "${CODIKA_WEBHOOK_URL}" == *"?"* ]]; then
-            WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}&apiKey=${CODIKA_API_KEY}"
-        else
-            WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}?apiKey=${CODIKA_API_KEY}"
-        fi
-        WEBHOOK_EVENTS='["MESSAGES_UPSERT","MESSAGES_UPDATE","CONNECTION_UPDATE","QRCODE_UPDATED","GROUPS_UPSERT","GROUPS_UPDATE","GROUP_PARTICIPANTS_UPDATE"]'
+            WEBHOOK_EVENTS='["MESSAGES_UPSERT"]'
         curl -s -o /dev/null \
             -X POST "http://localhost:8080/instance/create" \
             -H "apikey: ${EVO_API_KEY}" \
@@ -112,7 +109,7 @@ if [ -f .env ]; then
                 \"integration\": \"WHATSAPP-BAILEYS\",
                 \"qrcode\": true,
                 \"webhook\": {
-                    \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
+                    \"url\": \"${CODIKA_WEBHOOK_URL}\",
                     \"headers\": { \"X-API-Key\": \"${CODIKA_API_KEY}\" },
                     \"byEvents\": false,
                     \"base64\": false,
@@ -216,18 +213,10 @@ success "Evolution API is running"
 # ---- 7. Create instance with per-instance webhook ----
 info "Creating WhatsApp instance with webhook forwarding..."
 
-# Build webhook URL with API key as query parameter (reliable fallback)
-# Also set headers for X-API-Key (works in v2.3.7+ per-instance webhooks)
-# The n8n receiver should check both header and query param
-if [[ "${CODIKA_WEBHOOK_URL}" == *"?"* ]]; then
-    WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}&apiKey=${CODIKA_API_KEY}"
-else
-    WEBHOOK_URL_WITH_KEY="${CODIKA_WEBHOOK_URL}?apiKey=${CODIKA_API_KEY}"
-fi
-
-WEBHOOK_EVENTS='["MESSAGES_UPSERT","MESSAGES_UPDATE","CONNECTION_UPDATE","QRCODE_UPDATED","GROUPS_UPSERT","GROUPS_UPDATE","GROUP_PARTICIPANTS_UPDATE"]'
+WEBHOOK_EVENTS='["MESSAGES_UPSERT"]'
 
 # Create instance with per-instance webhook configuration
+# Authentication via X-API-Key header only (not query params, to avoid log exposure)
 HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
     -X POST "http://localhost:8080/instance/create" \
     -H "apikey: ${EVO_API_KEY}" \
@@ -237,7 +226,7 @@ HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
         \"integration\": \"WHATSAPP-BAILEYS\",
         \"qrcode\": true,
         \"webhook\": {
-            \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
+            \"url\": \"${CODIKA_WEBHOOK_URL}\",
             \"headers\": {
                 \"X-API-Key\": \"${CODIKA_API_KEY}\"
             },
@@ -258,7 +247,7 @@ elif [ "$HTTP_STATUS" -eq 403 ] || [ "$HTTP_STATUS" -eq 409 ]; then
         -H "Content-Type: application/json" \
         -d "{
             \"enabled\": true,
-            \"url\": \"${WEBHOOK_URL_WITH_KEY}\",
+            \"url\": \"${CODIKA_WEBHOOK_URL}\",
             \"headers\": {
                 \"X-API-Key\": \"${CODIKA_API_KEY}\"
             },
