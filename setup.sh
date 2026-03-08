@@ -72,10 +72,12 @@ success "Docker ready"
 # ---- 2. Check if already configured ----
 if [ -f .env ]; then
     warn "Already configured."
-    read -p "  Restart with existing config? (Y/n): " restart_choice
-    if [[ "$restart_choice" =~ ^[Nn]$ ]]; then
-        info "To reconfigure from scratch: rm .env && ./setup.sh"
-        exit 0
+    if [ "${CODIKA_INSTALLER:-}" != "1" ]; then
+        read -p "  Restart with existing config? (Y/n): " restart_choice
+        if [[ "$restart_choice" =~ ^[Nn]$ ]]; then
+            info "To reconfigure from scratch: rm .env && ./setup.sh"
+            exit 0
+        fi
     fi
     docker compose up -d
     EVO_API_KEY=$(grep EVOLUTION_API_KEY .env | head -1 | cut -d= -f2)
@@ -155,6 +157,10 @@ if [ -z "$CODIKA_API_KEY" ]; then
     fail "API Key is required. Find it in your Codika dashboard."
 fi
 
+if [[ ! "$CODIKA_WEBHOOK_URL" =~ ^https?:// ]]; then
+    fail "Webhook URL must start with http:// or https://"
+fi
+
 # ---- 4. Auto-detect everything else ----
 info "Detecting server IP..."
 
@@ -217,7 +223,8 @@ WEBHOOK_EVENTS='["MESSAGES_UPSERT"]'
 
 # Create instance with per-instance webhook configuration
 # Authentication via X-API-Key header only (not query params, to avoid log exposure)
-HTTP_STATUS=$(curl -s -o /tmp/evo_create_response.json -w "%{http_code}" \
+TMPFILE=$(mktemp)
+HTTP_STATUS=$(curl -s -o "$TMPFILE" -w "%{http_code}" \
     -X POST "http://localhost:8080/instance/create" \
     -H "apikey: ${EVO_API_KEY}" \
     -H "Content-Type: application/json" \
@@ -258,12 +265,18 @@ elif [ "$HTTP_STATUS" -eq 403 ] || [ "$HTTP_STATUS" -eq 409 ]; then
     success "Webhook configuration updated"
 else
     warn "Instance creation returned HTTP ${HTTP_STATUS}. You may need to create it manually via the management page."
-    cat /tmp/evo_create_response.json 2>/dev/null || true
+    cat "$TMPFILE" 2>/dev/null || true
 fi
 
-rm -f /tmp/evo_create_response.json
+rm -f "$TMPFILE"
 
 # ---- 8. Done! ----
+
+# When called from install.sh, skip the banner (installer handles QR + security)
+if [ "${CODIKA_INSTALLER:-}" = "1" ]; then
+    exit 0
+fi
+
 echo ""
 echo -e "${GREEN}  ==========================================${NC}"
 echo -e "${GREEN}  Setup complete!${NC}"

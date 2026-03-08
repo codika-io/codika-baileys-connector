@@ -1,5 +1,11 @@
 # Secrets
 .env
+.env.local
+.env.*.local
+.secrets/
+
+# Internal (not part of the public template)
+CLAUDE.md
 
 # OS files
 .DS_Store
@@ -10,3 +16,11 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Logs
+*.log
+logs/
+
+# Local overrides
+docker-compose.override.yml
+*.bak
