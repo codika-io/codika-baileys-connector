@@ -2,8 +2,8 @@
 # =============================================================================
 # Codika WhatsApp Connector - Reconnect
 # =============================================================================
-# Temporarily opens the QR scan page, waits for WhatsApp to connect,
-# then closes the page automatically.
+# Temporarily opens the management page, waits for WhatsApp to connect
+# (via QR code or pairing code), then closes the page automatically.
 #
 # Usage: ./reconnect.sh
 # =============================================================================
@@ -72,7 +72,7 @@ if [ "$STATE" = "open" ]; then
 fi
 
 # ---- 4. Logout old session so a fresh QR is generated ----
-info "Resetting session for new QR code..."
+info "Resetting session for new connection..."
 curl -s -o /dev/null -m 5 \
     -X DELETE "http://localhost:8080/instance/logout/bot" \
     -H "apikey: ${EVO_API_KEY}" 2>/dev/null || true
@@ -90,7 +90,7 @@ FIREWALL_MANAGED=false
 if [[ "$(uname)" == "Linux" ]] && command -v ufw &> /dev/null; then
     ufw allow 3000/tcp > /dev/null 2>&1
     FIREWALL_MANAGED=true
-    info "QR page opened temporarily"
+    info "Management page opened temporarily"
 fi
 
 # ---- 6. Show URL and wait ----
@@ -99,8 +99,8 @@ echo -e "  Open this URL in your browser:"
 echo ""
 echo -e "  ${BOLD}${BLUE}http://${SERVER_IP}:3000#key=${EVO_API_KEY}${NC}"
 echo ""
-echo -e "  Then on your phone:"
-echo -e "  WhatsApp > Settings > Linked Devices > Link a Device"
+echo -e "  Then choose QR Code or Pairing Code to link your device."
+echo -e "  On your phone: WhatsApp > Settings > Linked Devices > Link a Device"
 echo ""
 echo -e "  ${DIM}Waiting for connection (timeout: 15 min)...${NC}"
 
@@ -128,10 +128,10 @@ fi
 
 if [ "$CONNECTED" = true ]; then
     echo ""
-    success "WhatsApp connected! QR page secured."
+    success "WhatsApp connected! Management page secured."
 else
     echo ""
-    warn "Timed out. QR page closed for security."
+    warn "Timed out. Management page closed for security."
     echo -e "  Run ${BOLD}./reconnect.sh${NC} to try again."
 fi
 echo ""

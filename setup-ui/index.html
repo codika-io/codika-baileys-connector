@@ -91,6 +91,37 @@
     .status-text { color: #a3a3a3; }
     .status-text.connected { color: #22c55e; }
 
+    /* Method toggle tabs */
+    .method-tabs {
+      display: flex;
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 20px;
+    }
+
+    .method-tab {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: #737373;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .method-tab.active {
+      background: #262626;
+      color: #fafafa;
+    }
+
+    .method-tab:hover:not(.active) {
+      color: #a3a3a3;
+    }
+
     /* QR Code area */
     .qr-section {
       text-align: center;
@@ -126,6 +157,70 @@
     }
 
     .qr-instructions strong {
+      color: #d4d4d4;
+    }
+
+    /* Pairing code area */
+    .pairing-section {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .phone-input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .phone-input-group input {
+      flex: 1;
+      padding: 10px 14px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fafafa;
+      font-size: 14px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      outline: none;
+    }
+
+    .phone-input-group input:focus {
+      border-color: #22c55e;
+    }
+
+    .phone-input-group input::placeholder {
+      color: #525252;
+    }
+
+    .pairing-code-display {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+
+    .pairing-code-value {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #22c55e;
+      margin-bottom: 8px;
+    }
+
+    .pairing-code-timer {
+      font-size: 12px;
+      color: #737373;
+    }
+
+    .pairing-instructions {
+      font-size: 13px;
+      color: #737373;
+      line-height: 1.5;
+    }
+
+    .pairing-instructions strong {
       color: #d4d4d4;
     }
 
@@ -266,6 +361,12 @@
         <p class="qr-placeholder">Initializing...</p>
       </div>
 
+      <!-- Method toggle (shown during QR and Pairing states) -->
+      <div id="methodTabs" class="method-tabs hidden">
+        <button class="method-tab active" id="tabQR" onclick="switchMethod('qr')">QR Code</button>
+        <button class="method-tab" id="tabPairing" onclick="switchMethod('pairing')">Pairing Code</button>
+      </div>
+
       <!-- State: QR Code -->
       <div id="stateQR" class="hidden">
         <div class="qr-section">
@@ -275,6 +376,27 @@
           <div class="qr-instructions">
             <strong>Scan this QR code with WhatsApp:</strong><br>
             Open WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device
+          </div>
+        </div>
+      </div>
+
+      <!-- State: Pairing Code -->
+      <div id="statePairingCode" class="hidden">
+        <div class="pairing-section">
+          <div class="phone-input-group">
+            <input type="tel" id="phoneInput" placeholder="+32 470 123456" autocomplete="tel">
+            <button class="btn btn-primary" style="width:auto; padding:10px 20px;" onclick="requestPairingCode()">Get Code</button>
+          </div>
+
+          <div id="pairingCodeResult" class="hidden">
+            <div class="pairing-code-display">
+              <div class="pairing-code-value" id="pairingCodeValue"></div>
+              <div class="pairing-code-timer" id="pairingCodeTimer">Refreshes automatically</div>
+            </div>
+            <div class="pairing-instructions">
+              <strong>Enter this code in WhatsApp:</strong><br>
+              Settings &rarr; Linked Devices &rarr; Link a Device &rarr; Link with phone number instead
+            </div>
           </div>
         </div>
       </div>
@@ -322,6 +444,9 @@
 
     let pollInterval = null;
     let qrPollInterval = null;
+    let pairingPollInterval = null;
+    let currentMethod = 'qr'; // 'qr' or 'pairing'
+    let currentPhoneNumber = '';
 
     // On load, check for API key in URL hash (setup.sh puts it there)
     (function init() {
@@ -366,9 +491,12 @@
     }
 
     function showState(stateId) {
-      ['stateLoading', 'stateQR', 'stateConnected', 'stateNeedsInstance'].forEach(id => {
+      ['stateLoading', 'stateQR', 'statePairingCode', 'stateConnected', 'stateNeedsInstance'].forEach(id => {
         document.getElementById(id).classList.toggle('hidden', id !== stateId);
       });
+      // Show method tabs when in QR or pairing code state
+      const showTabs = (stateId === 'stateQR' || stateId === 'statePairingCode');
+      document.getElementById('methodTabs').classList.toggle('hidden', !showTabs);
     }
 
     function showError(msg) {
@@ -401,6 +529,7 @@
           setStatus('connected', 'Connected');
           showState('stateConnected');
           stopQRPolling();
+          stopPairingPolling();
 
           // Try to get phone number
           try {
@@ -412,8 +541,9 @@
           } catch (e) { /* ignore */ }
 
         } else if (state === 'connecting') {
-          setStatus('connecting', 'Waiting for QR scan...');
-          if (!qrPollInterval) fetchQR();
+          setStatus('connecting', currentMethod === 'pairing' ? 'Waiting for pairing code entry...' : 'Waiting for QR scan...');
+          if (currentMethod === 'qr' && !qrPollInterval) fetchQR();
+          if (currentMethod === 'pairing') showState('statePairingCode');
 
         } else {
           setStatus('disconnected', 'Disconnected');
@@ -437,32 +567,36 @@
         showState('stateLoading');
         setStatus('connecting', 'Connecting...');
 
-        // Instance is normally created by setup.sh, so try connect first
+        // Ensure instance exists
         try {
-          await fetchQR();
-          return;
+          await api(`/instance/connectionState/${INSTANCE_NAME}`);
         } catch (e) {
-          // Instance might not exist yet, create it
-        }
-
-        setStatus('connecting', 'Creating instance...');
-        try {
-          await api(`/instance/create`, {
-            method: 'POST',
-            body: JSON.stringify({
-              instanceName: INSTANCE_NAME,
-              integration: 'WHATSAPP-BAILEYS'
-            })
-          });
-        } catch (e) {
-          // Ignore "already exists" errors
-          if (!e.message.includes('already') && !e.message.includes('exists')) {
-            throw e;
+          if (e.message.includes('404') || e.message.includes('not found')) {
+            setStatus('connecting', 'Creating instance...');
+            try {
+              await api(`/instance/create`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  instanceName: INSTANCE_NAME,
+                  integration: 'WHATSAPP-BAILEYS'
+                })
+              });
+              await new Promise(r => setTimeout(r, 1500));
+            } catch (createErr) {
+              if (!createErr.message.includes('already') && !createErr.message.includes('exists')) {
+                throw createErr;
+              }
+            }
           }
         }
 
-        await new Promise(r => setTimeout(r, 1500));
-        await fetchQR();
+        // Start with the selected method
+        if (currentMethod === 'pairing') {
+          showState('statePairingCode');
+          setStatus('connecting', 'Enter your phone number to get a pairing code');
+        } else {
+          await fetchQR();
+        }
 
       } catch (e) {
         showError(`Failed to connect: ${e.message}`);
@@ -513,12 +647,129 @@
       }
     }
 
-    async function disconnect() {
-      if (!confirm('This will disconnect WhatsApp. You will need to scan a new QR code. Continue?')) return;
+    function stopPairingPolling() {
+      if (pairingPollInterval) {
+        clearInterval(pairingPollInterval);
+        pairingPollInterval = null;
+      }
+    }
+
+    function switchMethod(method) {
+      currentMethod = method;
+      document.getElementById('tabQR').classList.toggle('active', method === 'qr');
+      document.getElementById('tabPairing').classList.toggle('active', method === 'pairing');
+
+      if (method === 'qr') {
+        stopPairingPolling();
+        showState('stateQR');
+        setStatus('connecting', 'Scan the QR code with WhatsApp');
+        if (!qrPollInterval) fetchQR();
+      } else {
+        stopQRPolling();
+        showState('statePairingCode');
+        setStatus('connecting', 'Enter your phone number to get a pairing code');
+      }
+    }
+
+    function normalizePhone(input) {
+      // Strip everything except digits and leading +
+      let cleaned = input.replace(/[^\d+]/g, '');
+      if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
+      return cleaned;
+    }
+
+    async function ensureInstanceForPairing(phone) {
+      // Pairing code requires the instance to be created with number + qrcode:false.
+      // If the instance already exists (e.g. from QR flow), delete and recreate it.
       try {
+        await api(`/instance/connectionState/${INSTANCE_NAME}`);
+        // Instance exists, delete it first
+        try { await api(`/instance/delete/${INSTANCE_NAME}`, { method: 'DELETE' }); } catch (e) { /* ignore */ }
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (e) { /* instance doesn't exist, good */ }
+
+      await api(`/instance/create`, {
+        method: 'POST',
+        body: JSON.stringify({
+          instanceName: INSTANCE_NAME,
+          integration: 'WHATSAPP-BAILEYS',
+          number: phone,
+          qrcode: false
+        })
+      });
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    async function requestPairingCode() {
+      const raw = document.getElementById('phoneInput').value.trim();
+      if (!raw) {
+        showError('Enter a phone number with country code (e.g. +32 470 123456)');
+        return;
+      }
+
+      const phone = normalizePhone(raw);
+      if (phone.length < 8) {
+        showError('Phone number seems too short. Include the country code (e.g. +32 470 123456)');
+        return;
+      }
+
+      currentPhoneNumber = phone;
+      hideError();
+      setStatus('connecting', 'Preparing instance...');
+
+      try {
+        await ensureInstanceForPairing(phone);
+      } catch (e) {
+        showError(`Failed to prepare instance: ${e.message}`);
+        return;
+      }
+
+      await fetchPairingCode(phone);
+
+      // Auto-refresh the code every 45 seconds (codes expire at ~60s)
+      stopPairingPolling();
+      pairingPollInterval = setInterval(async () => {
+        try {
+          await fetchPairingCode(currentPhoneNumber);
+        } catch (e) {
+          stopPairingPolling();
+          checkStatus();
+        }
+      }, 45000);
+    }
+
+    async function fetchPairingCode(phone) {
+      try {
+        const data = await api(`/instance/connect/${INSTANCE_NAME}?number=${phone}`);
+
+        if (data?.pairingCode) {
+          const code = data.pairingCode;
+          // Format as XXXX-XXXX for readability
+          const formatted = code.length === 8 ? code.slice(0, 4) + '-' + code.slice(4) : code;
+          document.getElementById('pairingCodeValue').textContent = formatted;
+          document.getElementById('pairingCodeResult').classList.remove('hidden');
+          document.getElementById('pairingCodeTimer').textContent = 'Code refreshes every 45s';
+          setStatus('connecting', 'Waiting for pairing code entry...');
+        } else if (data?.instance?.state === 'open') {
+          checkStatus();
+        } else {
+          // pairingCode is null: number may not be registered on WhatsApp
+          stopPairingPolling();
+          showError('Could not generate a pairing code. Make sure this number is registered on WhatsApp and includes the country code (e.g. +32 470 123456).');
+        }
+      } catch (e) {
+        showError(`Failed to get pairing code: ${e.message}`);
+      }
+    }
+
+    async function disconnect() {
+      if (!confirm('This will disconnect WhatsApp. You will need to link again. Continue?')) return;
+      try {
+        stopPairingPolling();
         await api(`/instance/logout/${INSTANCE_NAME}`, { method: 'DELETE' });
         setStatus('disconnected', 'Disconnected');
         showState('stateNeedsInstance');
+        document.getElementById('pairingCodeResult').classList.add('hidden');
       } catch (e) {
         showError(`Failed to disconnect: ${e.message}`);
       }
