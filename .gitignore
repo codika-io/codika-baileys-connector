@@ -24,3 +24,6 @@ logs/
 # Local overrides
 docker-compose.override.yml
 *.bak
+
+# ── Entire ───────────────────────────────────────────────────
+.entire/
